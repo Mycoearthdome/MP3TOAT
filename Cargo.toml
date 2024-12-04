@@ -1,0 +1,12 @@
+[package]
+name = "MP3toAT"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hound = "3.5.1"
+puremp3 = "0.1.0"
+
+[[bin]]
+name = "MP3toAT"
+path = "src/MP3toAT.rs"
