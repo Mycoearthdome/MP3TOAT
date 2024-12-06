@@ -8,20 +8,20 @@ fn main() -> Result<()> {
     let wav_file = "morse_code.wav"; // Path to the output WAV file
 
     // Convert MP3 to WAV
-    convert_mp3_to_wav(mp3_file, wav_file)?;
+    let audio_data = convert_mp3_to_wav(mp3_file, wav_file)?;
 
     // Extract audio data from WAV file
-    let audio_data = extract_audio_data(wav_file)?;
+    //let audio_data = extract_audio_data(wav_file)?;
 
     // Generate ATDT command from audio data
-    let atdt_command = generate_atdt_command(&audio_data)?;
+    let atdt_command = generate_atdt_command(audio_data)?;
 
     println!("ATDT command: {}", atdt_command);
 
     Ok(())
 }
 
-fn convert_mp3_to_wav(mp3_file: &str, wav_file: &str) -> Result<()> {
+fn convert_mp3_to_wav(mp3_file: &str, wav_file: &str) -> Result<Vec<[Vec<f64>; 1]>> {
     let mp3_file = File::open(mp3_file)?;
     let mut decoder = Mp3Decoder::new(BufReader::new(mp3_file));
 
@@ -33,17 +33,41 @@ fn convert_mp3_to_wav(mp3_file: &str, wav_file: &str) -> Result<()> {
         sample_format: SampleFormat::Float,
     }).unwrap();
 
+    let mut audio_segments = Vec::new();
+    let mut data = Vec::new();
     // Decode MP3 frames and write to WAV
     while let Ok(frame) = decoder.next_frame() {
         // Write the samples to the WAV file
-        for sample in frame.samples {
-            wav_writer.write_sample(sample[0]).unwrap();
+         let mut skip:bool = false;
+        for mut sample in frame.samples {
+            if !skip{
+                if sample[0] > -0.001 && sample[0] < 0.001{
+                    sample[0] = 0.0;
+                }
+                if sample[0] > 0.0{
+                    data.push(0.50);
+                    wav_writer.write_sample(0.50).unwrap();
+                } else if sample[0] < 0.0{
+                    data.push(-0.50);
+                    wav_writer.write_sample(-0.50).unwrap();
+                } else{
+                    wav_writer.write_sample(0.0).unwrap();
+                    //segment between zeros
+                    audio_segments.push([data.clone()]);
+                    data.clear();
+                }
+            }
+            if !skip{
+                skip = true;
+            } else {
+                skip = false;
+            }
         }
     }
 
-    Ok(())
+    Ok(audio_segments)
 }
-
+/*
 fn extract_audio_data(wav_file: &str) -> Result<Vec<f32>> {
     let wav_file = File::open(wav_file)?;
     let mut wav_reader = hound::WavReader::new(BufReader::new(wav_file)).unwrap();
@@ -58,108 +82,49 @@ fn extract_audio_data(wav_file: &str) -> Result<Vec<f32>> {
 
     Ok(audio_data)
 }
+*/
 
-fn generate_atdt_command(audio_data: &[f32]) -> Result<String> {
+fn check_dash_presence(audio:&Vec<f64>,morse_code_mapping:[char; 2]) -> String{
+    let mut previous_sample = 0.0;
+    let mut count_to_zero_dash = 0;
+    let mut atdt_command:String = String::new();
+
+    for sample in audio{
+        //DASH conditions
+        if *sample != previous_sample && *sample > 0.0{
+            count_to_zero_dash = count_to_zero_dash + 1;
+        }
+
+        if count_to_zero_dash >= 2{
+            atdt_command.push(morse_code_mapping[1]);
+            count_to_zero_dash = 0;
+        }
+        previous_sample = *sample;
+    }
+    atdt_command
+}
+
+
+fn generate_atdt_command(audio_segment: Vec<[Vec<f64>; 1]>) -> Result<String> {
     let mut atdt_command = String::new();
 
     // Define Morse code mapping
-    let morse_code_mapping = ['.', '-'];
-
-    let sample_threshold_min = -0.0001;
-    let sample_threshold_max = 0.0001;
-
-    let sampling_threshold_min = -0.005;
-    let sampling_threshold_max = 0.005;
-
-    let mut previous_sampling = 0.0;
-
-    let mut nb_matched_samples = 0;
-    let mut previous_jump_value = 0.0;
-    let mut jump_value = 0.0;
-    let mut impulse = 0.0;
-    let mut previous_impulse = 0.0;
-    let mut impulse_bridge = 0.0;
-
-    let mut bridge_vector:Vec<(f32, f32)> = Vec::new();
+    let morse_code_mapping: [char; 2] = ['.', '-'];
+    let mut added_atdt;
     // Iterate over audio data and generate ATDT command
-    for sample in audio_data {
-        let mut sampling = *sample;
-        if *sample > sample_threshold_min && *sample < sample_threshold_max{
-            sampling = 0.0;
-        }
-        if previous_sampling + sampling == sampling * 2.0 && sampling != 0.0{
-            nb_matched_samples = nb_matched_samples + 1;
-            if jump_value == 0.0{
-                jump_value = jump_value + sampling;
-                if sampling < sampling_threshold_min && sampling > sampling_threshold_max{
-                    previous_impulse = impulse;
-                    impulse = previous_jump_value + jump_value;
-                    
-                } else {
-                    impulse = sampling;
-                    impulse_bridge = impulse + previous_impulse;
+    for segment in audio_segment {
+        for audio in segment{
+            added_atdt = atdt_command.len();
+            atdt_command += &check_dash_presence(&audio, morse_code_mapping);
+            if atdt_command.len() == added_atdt{ //no dash present add dots.
+                //println!("Added {} dots", audio.len());
+                for _sample in audio{
+                    atdt_command.push(morse_code_mapping[0]);
                 }
-                previous_jump_value = jump_value;
-            }
-        } else {
-            jump_value = 0.0;
-            previous_impulse = impulse;
-            impulse = 0.0;
-            impulse_bridge = 0.0;
-        }
-
-        bridge_vector.push((sampling, impulse_bridge));
-
-        //println!("SAMPLE={} DIFFERENCE={} MATCHED={} JUMP={} IMPULSE={} BRIDGE={}", sampling, previous_sampling+sampling, nb_matched_samples, jump_value, impulse, impulse_bridge);
-        
-        previous_sampling = sampling;
-
-    }
-    let mut negative: bool = false;
-    let mut positive: bool = false; //for the first dash --TODO: better than this.
-    let mut diagonal;
-    let mut skip_count= 0;
-    let mut skip : bool = false;
-
-    //let sampling_second_threshold_filter = 0.005;
-
-    for (sampling, bridge) in bridge_vector {
-        if bridge != 0.0 {//{&& sampling >= sampling_second_threshold_filter{
-            if skip == false { //to trace the diagonal to a dash
-                println!("SAMPLING={} BRIDGE={}", sampling, bridge);
-                if bridge > 0.0 {
-                    if positive == true{
-                        diagonal = false;
-                    } else {
-                        diagonal = true
-                    }
-                    positive = true;
-                    negative = false
-                } else {
-                    if negative == true{
-                        diagonal = false;
-                    } else {
-                        diagonal = true;
-                    }
-                    negative = true;
-                    positive = false;
-                }
-                if diagonal == true{
-                    atdt_command.push(morse_code_mapping[1]); //dash
-                    skip = true;
-                    skip_count = 0;
-                } else {
-                    atdt_command.push(morse_code_mapping[0]); //dot
-                }
-            }
-        }
-        if skip == true {
-            skip_count = skip_count + 1;
-            if skip_count == 3{
-                skip = false;
+            } else {
+                println!("Added {} dash", atdt_command.len() - added_atdt)
             }
         }
     }
-
     Ok(atdt_command)
 }
