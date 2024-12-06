@@ -10,36 +10,40 @@ fn main() -> Result<()> {
     let wav_file = "morse_code.wav"; // Path to the output WAV file
    
     let mut found:bool = false;
+    for s in 1..7{
+        let step = 10.0_f64.powi(-s);
+        let max_start = 0.0;
+        let max_end = 1.0;
+        let max_step = step;
+        let min_start = -1.0;
+        let min_end = 0.0;
+        let min_step = step;
+        println!("STEP={}",10.0_f64.powi(-s));
+        for i in (max_start / max_step) as i32..(max_end / max_step) as i32{
+            let max = (i as f64) * max_step;
+            for j in (min_start / min_step) as i32..(min_end /min_step) as i32{
+                let min = (j as f64) * min_step;
+                // Convert MP3 to WAV
+                let audio_data = convert_mp3_to_wav(mp3_file, wav_file, min, max)?;
 
-    let max_start = 10.0_f64.powi(-9);
-    let max_end = 1.0;
-    let max_step = 10.0_f64.powi(-9);
-    let min_start = 10.0_f64.powi(-9);
-    let min_end = 1.0;
-    let min_step = 10.0_f64.powi(-9);
+                // Extract audio data from WAV file
+                //let audio_data = extract_audio_data(wav_file)?;
 
-    for i in (max_start / max_step) as i32..(max_end /max_step) as i32{
-        let max = (i as f64) * max_step;
-        println!("MAX = {}",max);
-        for j in (min_start / min_step) as i32..(min_end /min_step) as i32{
-            let min = -(j as f64) * min_step;
-            // Convert MP3 to WAV
-            let audio_data = convert_mp3_to_wav(mp3_file, wav_file, min, max)?;
+                // Generate ATDT command from audio data
+                let atdt_command = generate_atdt_command(audio_data)?;
 
-            // Extract audio data from WAV file
-            //let audio_data = extract_audio_data(wav_file)?;
+                if &atdt_command == MATCH_MORSE_CODE{
+                    println!("FOUND MIN={}", min);
+                    println!("FOUND MAX={}", max);
+                    found = true;
+                    break;
+                }
 
-            // Generate ATDT command from audio data
-            let atdt_command = generate_atdt_command(audio_data)?;
-
-            if &atdt_command == MATCH_MORSE_CODE{
-                println!("FOUND MIN={}", min);
-                println!("FOUND MAX={}", max);
-                found = true;
-                break;
+                println!("min={} max={} --> [{}]",min, max, atdt_command);
             }
-
-            //println!("min={} max={} --> [{}]",min, max, atdt_command);
+            if found{
+                break
+            }
         }
         if found{
             break
