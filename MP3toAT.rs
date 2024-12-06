@@ -3,25 +3,53 @@ use std::io::{BufReader, Result};
 use hound::{WavWriter, WavSpec, SampleFormat};
 use puremp3::Mp3Decoder;
 
+const MATCH_MORSE_CODE: &str = "-...............--....------.-.......-....-...-.-.--"; //This is a test morse file
+
 fn main() -> Result<()> {
     let mp3_file = "Chapter0000.mp3"; // Path to the input MP3 file
     let wav_file = "morse_code.wav"; // Path to the output WAV file
+   
+    let mut found:bool = false;
 
-    // Convert MP3 to WAV
-    let audio_data = convert_mp3_to_wav(mp3_file, wav_file)?;
+    let max_start = 10.0_f64.powi(-9);
+    let max_end = 1.0;
+    let max_step = 10.0_f64.powi(-9);
+    let min_start = 10.0_f64.powi(-9);
+    let min_end = 1.0;
+    let min_step = 10.0_f64.powi(-9);
 
-    // Extract audio data from WAV file
-    //let audio_data = extract_audio_data(wav_file)?;
+    for i in (max_start / max_step) as i32..(max_end /max_step) as i32{
+        let max = (i as f64) * max_step;
+        println!("MAX = {}",max);
+        for j in (min_start / min_step) as i32..(min_end /min_step) as i32{
+            let min = -(j as f64) * min_step;
+            // Convert MP3 to WAV
+            let audio_data = convert_mp3_to_wav(mp3_file, wav_file, min, max)?;
 
-    // Generate ATDT command from audio data
-    let atdt_command = generate_atdt_command(audio_data)?;
+            // Extract audio data from WAV file
+            //let audio_data = extract_audio_data(wav_file)?;
 
-    println!("ATDT command: {}", atdt_command);
+            // Generate ATDT command from audio data
+            let atdt_command = generate_atdt_command(audio_data)?;
 
+            if &atdt_command == MATCH_MORSE_CODE{
+                println!("FOUND MIN={}", min);
+                println!("FOUND MAX={}", max);
+                found = true;
+                break;
+            }
+
+            //println!("min={} max={} --> [{}]",min, max, atdt_command);
+        }
+        if found{
+            break
+        }
+    }
+  
     Ok(())
 }
 
-fn convert_mp3_to_wav(mp3_file: &str, wav_file: &str) -> Result<Vec<[Vec<f64>; 1]>> {
+fn convert_mp3_to_wav(mp3_file: &str, wav_file: &str, min: f64, max: f64) -> Result<Vec<[Vec<f64>; 1]>> {
     let mp3_file = File::open(mp3_file)?;
     let mut decoder = Mp3Decoder::new(BufReader::new(mp3_file));
 
@@ -41,7 +69,8 @@ fn convert_mp3_to_wav(mp3_file: &str, wav_file: &str) -> Result<Vec<[Vec<f64>; 1
          let mut skip:bool = false;
         for mut sample in frame.samples {
             if !skip{
-                if sample[0] > -0.001 && sample[0] < 0.001{
+                let sampler:f64 = sample[0] as f64;
+                if sampler > min && sampler < max{
                     sample[0] = 0.0;
                 }
                 if sample[0] > 0.0{
@@ -91,16 +120,17 @@ fn check_dash_presence(audio:&Vec<f64>,morse_code_mapping:[char; 2]) -> String{
 
     for sample in audio{
         //DASH conditions
-        if *sample != previous_sample && *sample > 0.0{
+        if *sample != previous_sample{
             count_to_zero_dash = count_to_zero_dash + 1;
         }
 
-        if count_to_zero_dash >= 2{
+        if count_to_zero_dash >= 2{ //2
             atdt_command.push(morse_code_mapping[1]);
             count_to_zero_dash = 0;
         }
         previous_sample = *sample;
     }
+
     atdt_command
 }
 
@@ -122,7 +152,7 @@ fn generate_atdt_command(audio_segment: Vec<[Vec<f64>; 1]>) -> Result<String> {
                     atdt_command.push(morse_code_mapping[0]);
                 }
             } else {
-                println!("Added {} dash", atdt_command.len() - added_atdt)
+                //println!("Added {} dash", atdt_command.len() - added_atdt)
             }
         }
     }
