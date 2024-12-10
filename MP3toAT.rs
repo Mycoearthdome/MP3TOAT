@@ -13,14 +13,14 @@ fn main() -> Result<()> {
     ('B', "-..."),
     ('C', "-.-."),
     ('D', "-.."),
-    ('E', "."),
+    ('E', "."),         // Original
     ('F', "..-."),
     ('G', "--."),
     ('H', "...."),
     ('I', ".."),
     ('J', ".---"),
     ('K', "-.-"),
-    ('L', ".-.."),
+    ('L', ".-.."),     // Original
     ('M', "--"),
     ('N', "-."),
     ('O', "---"),
@@ -45,7 +45,7 @@ fn main() -> Result<()> {
     ('5', "....."),
     ('6', "-...."),
     ('7', "--..."),
-    ('8', "---.."),
+    ('8', "---..-"),    // Updated for '8'
     ('9', "----."),
 
     // Special characters
@@ -64,26 +64,26 @@ fn main() -> Result<()> {
     ('=', "-...-"),
     ('+', ".-.-."),  // Standard BASE64 '+'
     ('_', "..--.-"), // URL-safe BASE64 '_'
-    ('"', ".-..-."),
+    ('"', "..-..--"), // Updated for '"'
     ('$', "...-..-"),
-    ('@', ".--.-."),
+    ('@', ".--.-."), // Remains the same
 
     // Lowercase letters with unique Morse code
     ('a', "--.-."),     // Unique Morse for lowercase 'a'
     ('b', "-.-.-"),     // Unique Morse for lowercase 'b'
     ('c', ".--.."),     // Unique Morse for lowercase 'c'
-    ('d', "-...-"),     // Unique Morse for lowercase 'd'
-    ('e', "..-.--"),    // Unique Morse for lowercase 'e'
+    ('d', "-..-.."),    // Unique Morse for lowercase 'd'
+    ('e', "..-..."),     // Updated for lowercase 'e'
     ('f', "---.-"),     // Unique Morse for lowercase 'f'
     ('g', ".---."),     // Unique Morse for lowercase 'g'
     ('h', "..-.-"),     // Unique Morse for lowercase 'h'
-    ('i', ".--.-."),    // Unique Morse for lowercase 'i'
+    ('i', "..-..-."),   // Updated for lowercase 'i'
     ('j', "..-.."),     // Unique Morse for lowercase 'j'
-    ('k', ".-..-."),    // Unique Morse for lowercase 'k'
-    ('l', "---..-"),    // Unique Morse for lowercase 'l'
+    ('k', "-.-..-"),    // Updated for lowercase 'k'
+    ('l', "---..-."),    // Updated for lowercase 'l'
     ('m', ".-.-.."),    // Unique Morse for lowercase 'm'
-    ('n', "-..-."),     // Unique Morse for lowercase 'n'
-    ('o', "..-.--"),    // Unique Morse for lowercase 'o'
+    ('n', "-..-.-"),    // Unique Morse for lowercase 'n'
+    ('o', "---.."),     // Updated for lowercase 'o'
     ('p', "-..--."),    // Unique Morse for lowercase 'p'
     ('q', "..-.-."),    // Unique Morse for lowercase 'q'
     ('r', ".-..-"),     // Unique Morse for lowercase 'r'
@@ -91,13 +91,21 @@ fn main() -> Result<()> {
     ('t', "..--.-."),   // Unique Morse for lowercase 't'
     ('u', ".-.-..-"),   // Unique Morse for lowercase 'u'
     ('v', "-...-."),    // Unique Morse for lowercase 'v'
-    ('w', ".--.-."),    // Unique Morse for lowercase 'w'
+    ('w', ".--..-."),   // Updated for lowercase 'w'
     ('x', "--..-."),    // Unique Morse for lowercase 'x'
-    ('y', "..-.---"),   // Unique Morse for lowercase 'y'
+    ('y', "..-.---"),    // Unique Morse for lowercase 'y'
     ('z', ".-.-.-."),   // Unique Morse for lowercase 'z'
 ].iter().cloned().collect();
 
     let inverted_base64_map: HashMap<&&str, &char> = base64_morse_code_map.iter().map(|(k, v)| (v, k)).collect();
+    if inverted_base64_map.len() < base64_morse_code_map.len(){
+        for (key, value) in base64_morse_code_map.clone(){
+            if **inverted_base64_map.get(&value).unwrap() != key{
+                println!("MISING-->{}",key);
+            }
+        }
+    }
+
     let input_base64_filename = "BASE64_Convert.txt";
     let wav_file = "morse_code.wav"; // Path to the output WAV file
     let (morse, base64_content) = base64_to_wav(input_base64_filename, wav_file, base64_morse_code_map.clone());
@@ -107,7 +115,7 @@ fn main() -> Result<()> {
     f.write_all(morse.as_bytes())?;
 
     if base64_content == not_so_hidden_base64{
-        println!("{}\n", not_so_hidden_base64);
+        println!("{}", not_so_hidden_base64);
     } else {
         println!("IRRECOVERABLE!");
     }
@@ -141,6 +149,7 @@ fn base64_to_wav(base64_file: &str, wav_file: &str,base64_hashmap:HashMap<char, 
                     final_morse_string.push(morse_char);
                }
                wav_writer.write_sample(-0.5).unwrap();
+               final_morse_string.push(' ');
             }
             None => {
                 // handle the case where the key is not present
