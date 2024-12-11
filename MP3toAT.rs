@@ -1,12 +1,21 @@
 use hound::{SampleFormat, WavSpec, WavWriter};
 use std::fs;
-use std::io::{BufReader, Result};
+use std::io::{BufReader, Result, Write};
 use std::collections::HashMap;
-use std::io::Write;
 use std::process::exit;
+use clap::Parser;
+use base64::{Engine as _, engine::general_purpose};
 
+#[derive(Parser)]
+struct Args {
+    #[clap(short, long)]
+    input: String,
+}
 
 fn main() -> Result<()> {
+
+    let args = Args::parse();
+
     let base64_morse_code_map: HashMap<char, &'static str> = [
     // Uppercase letters
     ('A', ".-"),
@@ -106,37 +115,36 @@ fn main() -> Result<()> {
         }
     }
 
-    let input_base64_filename = "BASE64_Convert.txt";
-    let wav_file = "morse_code.wav"; // Path to the output WAV file
-    let (morse, base64_content) = base64_to_wav(input_base64_filename, wav_file, base64_morse_code_map.clone());
-    let not_so_hidden_base64 = extract_audio_data(wav_file, inverted_base64_map);
-    
-    let mut f = fs::File::create("OUTPUT.morse")?;
-    f.write_all(morse.as_bytes())?;
+    let input_filename = &args.input;
 
-    if base64_content == not_so_hidden_base64{
-        println!("{}", not_so_hidden_base64);
+    if input_filename.find(".wav") == None{
+        base64_to_wav(input_filename, base64_morse_code_map.clone());
     } else {
-        println!("IRRECOVERABLE!");
+        extract_audio_data(input_filename, inverted_base64_map);
     }
-
+   
     Ok(())
 }
 
-fn base64_to_wav(base64_file: &str, wav_file: &str,base64_hashmap:HashMap<char, &'static str>) -> (String, String) {
+fn base64_to_wav(input_file: &str,base64_hashmap:HashMap<char, &'static str>){
+    let mut wav_file = input_file.to_string();
+    wav_file.push_str(".wav");
+
     // Create WAV writer with appropriate specifications
     let mut wav_writer = WavWriter::create(
-        wav_file,
+        &wav_file,
         WavSpec {
             channels: 1,
-            sample_rate: 48000,
+            sample_rate: 192000,
             bits_per_sample: 32,
             sample_format: SampleFormat::Float,
         },
     )
     .unwrap();
-    let mut final_morse_string  = String::new();
-    let base64_contents = fs::read_to_string(base64_file).unwrap().replace("\n", "");
+    //let mut final_morse_string  = String::new();
+    let input_contents = fs::read(input_file).unwrap();
+
+    let base64_contents = general_purpose::STANDARD.encode(input_contents);
     for char in base64_contents.chars(){
         match base64_hashmap.get(&char) {
             Some(morse_code_char_value) => {
@@ -146,10 +154,10 @@ fn base64_to_wav(base64_file: &str, wav_file: &str,base64_hashmap:HashMap<char, 
                     } else {
                         wav_writer.write_sample(0.0).unwrap();
                     }
-                    final_morse_string.push(morse_char);
+                    //final_morse_string.push(morse_char);
                }
                wav_writer.write_sample(-0.5).unwrap();
-               final_morse_string.push(' ');
+               //final_morse_string.push(' ');
             }
             None => {
                 // handle the case where the key is not present
@@ -159,12 +167,10 @@ fn base64_to_wav(base64_file: &str, wav_file: &str,base64_hashmap:HashMap<char, 
         }
 
     }
-   (final_morse_string, base64_contents)
 }
 
-
-fn extract_audio_data(wav_file: &str, base64_hashmap:HashMap<&&str, &char>) -> String {
-    let wav_file = fs::File::open(wav_file).unwrap();
+fn extract_audio_data(wav_filename: &str, base64_hashmap:HashMap<&&str, &char>) {
+    let wav_file = fs::File::open(wav_filename).unwrap();
     let mut wav_reader = hound::WavReader::new(BufReader::new(wav_file)).unwrap();
     let mut not_so_hidden_base64 = String::new();
     let mut char = String::new();
@@ -196,6 +202,12 @@ fn extract_audio_data(wav_file: &str, base64_hashmap:HashMap<&&str, &char>) -> S
         }
     }
 
-    not_so_hidden_base64
+    let recovered_file = general_purpose::STANDARD.decode(not_so_hidden_base64).unwrap();
+    let mut recovered_filename = wav_filename[..(wav_filename.len()-4)].to_string();
+    recovered_filename.push_str(".recovered");
+    let mut recovered = std::fs::File::create(recovered_filename).unwrap();
+    recovered.write_all(&recovered_file).unwrap();
+    
+    
 }
 

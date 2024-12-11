@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 hound = "3.5.1"
 clap = { version = "4.5.23", features = ["derive"] }
+base64 = "0.22.1"
 
 [[bin]]
 name = "MP3toAT"
